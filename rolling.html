@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ボール転がし</title>
+<script>
+var canvas, context;            //カンバス
+var x = 400, y = 200, r = 10;   //ボールの位置、半径
+var vx, vy, rx = 0, ry = 0;     //ボールの速度、デバイスの回転角度
+var status = "alive";           //ステータス（alive/dead)
+var timer = null;               //タイマー
+
+//障害物、穴、ゴール              //データ形式[x, y(中心座標), r(円の半径)]
+var block = [[400, 300, 60], [300, 350, 40], [500, 350, 40], [300, 150, 40], [500, 150, 40],
+   [100, 100, 60], [700, 100, 60], [100, 350, 60], [700, 350, 60]];
+var hole = [[400, 0, 50], [200, 250, 50], [600, 250, 50], [200, 500, 50], [600, 500, 50]];
+var goal = [400, 500, 50];
+
+function init() {
+    //キャンバスの取得
+    canvas = document.getElementById("board");      //キャンバスのID
+    context = canvas.getContext("2d");              //キャンバスの描画機能を有効にする
+    //描画
+    draw();
+
+    //デバイスを傾けたときに角度を検出
+    window.addEventListener("deviceorientation", rotate, true); //デバイスの傾きを検出するイベント、実行する関数
+}
+
+function startGame() {
+    //スタート
+    status = "alive";
+    x = 400;                //ボールの初期座標
+    y = 200;
+    vx = 0;                 //ボールのスピード
+    vy = 0;
+    document.getElementById("message").innerText = "スタート";  //メッセージ表示エリアのID
+    if (timer != null) clearInterval(timer);                   //タイマーID
+    timer = setInterval(update, 20);                           //20ミリ秒ごとにupdate()関数を実行する
+}
+
+function update() {
+    //移動
+    vx += Math.sin(rx*Math.PI/180) * 0.02;  //デバイスの傾きから転がる方向を計算
+    vy -= Math.sin(ry*Math.PI/180) * 0.02;
+    x += vx;                                //ボールを移動
+    y += vy;
+    //壁で止まる
+    if ((x-r < 0) || (x+r > canvas.width)) {    //キャンバスのx軸方向の端なら
+       vx = 0;
+       if (x-r < 0) x = r;
+       if (x+r > canvas.width) x = canvas.width-r;  //ボールを止める
+    }
+    if ((y-r < 0) || (y+r > canvas.height)) {       //キャンバスのＹ軸方向の端なら
+        vy = 0;                                     //ボールを止める
+        if (y-r < 0) y = r;
+        if (y+r > canvas.height) y = canvas.height-r;
+    }
+
+    //ブロックに当たると跳ね返る
+    for (var i = 0; i < block.length; i++) collide(block[i], "block");  //ブロック（障害物）の数
+    //穴に当たると落ちる
+    for (var i = 0; i < hole.length; i++) collide(hole[i], "hole");     //穴の数
+    //ゴールに当たるとクリア
+    collide(goal, "goal");
+
+    //描画
+    draw();
+}
+
+function draw() {
+    //キャンバスのクリア
+    context.clearRect(0, 0, canvas.width, canvas.height);   //キャンバスの横幅、高さ
+
+    //障害物の描画
+    for (var i = 0; i < block.length; i++) {
+        drawCircle(block[i][0], block[i][1], block[i][2], "#66AA33");   //ブロック（障害物）の色は濃い黄緑
+    }
+    //穴の描画
+    for (var i = 0; i < hole.length; i++) {
+        drawCircle(hole[i][0], hole[i][1], hole[i][2], "#333333");  //穴の色は濃いグレー
+    }
+    //ゴールの描画
+    drawCircle(goal[0], goal[1], goal[2], "#114499");               //ゴールの色は濃い青
+    //ボールの描画
+    if (status == "alive") drawCircle(x, y, r, "#BB1133");          //ボールの色は濃い赤    
+}
+
+function drawCircle(x, y, r, color) {
+    //塗りつぶしの円の描画
+    context.fillStyle = color;
+    context.beginPath();
+    context.arc(x, y, r, 0, 2*Math.PI);      //座標(x, y)に半径rの円を描く
+    context.fill()
+}
+
+function collide(target, targetType) {
+    //あたり判定
+    var dx = target[0] - x;
+    var dy = target[1] - y;
+    var d = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));   //ボールとtargetとの距離を求める
+    if (d < target[2] + r) {                                //ぶつかったとき
+       if (targetType == "block") {                         //タイプがblockのとき
+          //障害物
+          var targetAngle = Math.atan2(dy, dx);             //ボールと障害物の中心を結ぶ角度を求める
+          var vAngle = Math.atan2(vy, vx);                  //ボールの移動角度を求める
+          var v = Math.sqrt(Math.pow(vx, 2) + Math.pow(vy, 2)); //ボールの速度を求める
+          vAngle = Math.PI - vAngle + targetAngle * 2;      //ボールの跳ね返り角度を求める
+          vx = Math.cos(vAngle) * v;                        //XY成分に分解
+          vy = Math.sin(vAngle) * v;
+       } else {                                             //タイプがholeまたはgoalのとき
+          //穴orゴール
+          var message = "失敗！";
+          if (targetType == "goal") message = "ゴール！";
+          document.getElementById("message").innerText = message;   //タイプに応じたメッセージを表示
+          status = "dead";
+          clearInterval(timer);       
+       }
+    }   
+}
+
+function rotate(event) {
+    //デバイスの角度を検出
+    var orientation = screen.orientation||screen.mozOrientation||screen.msOrientation;
+    if (orientation.type == "portrait-primary") {       //縦画面のとき
+       //縦向き
+       rx = event.beta;
+       ry = event.gamma;
+    } else if (orientation.type == "portrait-secondary") {  //縦画面で上下逆の時
+        //縦向き、逆
+        rx = -1 * event.beta;
+        ry = -1 * event.gamma;
+    } else if (orientation.type == "landscape-secondary") {  //横画面で上下逆の時
+        //横向き、逆
+        rx = -1 * event.gamma;
+        ry = event.beta;
+    } else {
+        //横向き
+        rx = event.gamma;
+        ry = -1 * event.beta;
+    }
+}
+</script>
+<style>
+canvas {
+    background-color: #EEEEBB;
+    border: solid thin #CCCCCC;
+}
+#message {color: #FF0000;}
+</style>
+</head>
+<body onload="init()">
+<p>ボール転がし</p>
+<input type="button" value="スタート" onclick="startGame()">
+<span id="message"></span>
+<hr>
+<canvas id="board" width="800" height="500"></canvas>
+</body>
+</html>
